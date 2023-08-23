@@ -354,10 +354,11 @@ class PoeClient {
 
         await delay(100);
 
-        // Click on delete button in modal with new  class
-        const deleteButtons = await this.page.$$('button[class*="Button_danger__zI3OH"]')
-        // console.log(deleteButtons);
-        await deleteButtons[1].click();
+        await this.page.waitForSelector(".Button_danger__zI3OH");
+
+        await this.page.evaluate(() => {
+            document.querySelectorAll(".Button_danger__zI3OH")[1].click();
+        });
     }
 
     async getBotNames() {
