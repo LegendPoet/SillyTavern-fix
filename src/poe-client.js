@@ -22,7 +22,7 @@ class PoeClient {
         this.poeCookie = poeCookie;
         // Currently, Assistant doesn't seem to work. This is simply a failsafe
         if (botName === "Assistant") {
-            this.botname = "gptforst";
+            this.botname = "Assistant";
         } else {
             this.botName = botName;
         }
@@ -454,7 +454,7 @@ class PoeClient {
         // Currently, Assistant doesn't seem to work, so this is simply a failsafe.
         if (botName === "Assistant" || botName === undefined) {
             console.log(`Bot name was ${botName}`);
-            this.botName = "ChatGPT";
+            this.botName = "Assistant";
         } else {
             this.botName = botName;
         }
