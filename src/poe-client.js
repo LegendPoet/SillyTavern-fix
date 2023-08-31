@@ -193,10 +193,7 @@ class PoeClient {
         try {
             //searching via classname raises errors from time to time for some reason
             //let inputForm = await this.driver.findElement(By.css("textarea"));
-            // Code added temporarily, as a test to try to solve the early request of a window
-
-            await this.page.$("textarea")
-            
+            await this.page.$("textarea");
             if (this.page.$("textarea") === null) {
                 throw new Error("Input element not found! Aborting.");
             }
