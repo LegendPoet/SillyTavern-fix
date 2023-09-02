@@ -330,7 +330,7 @@ class PoeClient {
     async deleteMessages(count) {
         await this.page.evaluate(() => {
             let allThreeDotsButtons = document.querySelectorAll(
-                ".ChatMessage_messageOverflowButton__55JDi"
+                ".ChatMessageOverflowButton_overflowButton__Yn0Lo"
             );
             allThreeDotsButtons[allThreeDotsButtons.length - 1].click();
         });

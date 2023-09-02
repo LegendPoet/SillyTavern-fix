@@ -1,10 +1,10 @@
 # SillyTavern-1.9.7-fix
-Latest from SillyTavern with Poe integration. This version only adds the Poe connection achieved by GlizzyChief to SillyTavern version 1.9.7. This is a prototype and will be updated as bugs arise with the integration.
+SillyTavern with Poe integration. Result of merging the Poe connection achieved by GlizzyChief to version 1.9.7 of SillyTavern. Stable so far, but may be updated as conflicts with Poe arise.
 
 ## How to install
-Just follow the steps for the GlizzyChief version, only changing the git clone to this version:
+Just follow the steps for the GlizzyChief version, only changing the "git clone" to this version:
 
-git clone https://github.com/LegendPoet/SillyTavern-1.9.7-fix.git
+- git clone https://github.com/LegendPoet/SillyTavern-fix.git -b stable
 
 From then on, you don't need any additional implementation. The original GlizzyChief project here: https://github.com/GlizzyChief/SillyTavern-1.8.4-fix
 
