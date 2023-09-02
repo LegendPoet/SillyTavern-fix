@@ -193,7 +193,10 @@ class PoeClient {
         try {
             //searching via classname raises errors from time to time for some reason
             //let inputForm = await this.driver.findElement(By.css("textarea"));
-            await this.page.$("textarea");
+            // Code added temporarily, as a test to try to solve the early request of a window
+
+            await this.page.$("textarea")
+            
             if (this.page.$("textarea") === null) {
                 throw new Error("Input element not found! Aborting.");
             }
@@ -295,7 +298,7 @@ class PoeClient {
 
         if (
             (await this.page.$(
-                ".ChatMessageSuggestedReplies_suggestedRepliesContainer__JgW12"
+                ".ChatMessageSuggestedReplies_suggestedRepliesContainer__v6sxJ"
             )) !== null
         ) {
             return false;
@@ -309,7 +312,7 @@ class PoeClient {
         await delay(5000);
 
         let suggestedMessages = await this.page.$$eval(
-            ".ChatMessageSuggestedReplies_suggestedRepliesContainer__JgW12",
+            ".ChatMessageSuggestedReplies_suggestedRepliesContainer__v6sxJ",
             (allMessages) => {
                 return allMessages.map(
                     (message) => message.childNodes[0].textContent
@@ -327,7 +330,7 @@ class PoeClient {
     async deleteMessages(count) {
         await this.page.evaluate(() => {
             let allThreeDotsButtons = document.querySelectorAll(
-                ".ChatMessage_messageOverflowButton__8a84V"
+                ".ChatMessageOverflowButton_overflowButton__Yn0Lo"
             );
             allThreeDotsButtons[allThreeDotsButtons.length - 1].click();
         });
@@ -342,7 +345,7 @@ class PoeClient {
 
         await this.page.evaluate((c) => {
             let allMessageContainers = document.querySelectorAll(
-                ".ChatMessage_messageRow__7yIr2"
+                ".ChatMessage_messageRow__WMtnL"
             );
             for (
                 let i = allMessageContainers.length - 2;
