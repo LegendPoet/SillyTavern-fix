@@ -298,7 +298,7 @@ class PoeClient {
 
         if (
             (await this.page.$(
-                ".ChatMessageSuggestedReplies_suggestedRepliesContainer__JgW12"
+                ".ChatMessageSuggestedReplies_suggestedRepliesContainer__v6sxJ"
             )) !== null
         ) {
             return false;
@@ -312,7 +312,7 @@ class PoeClient {
         await delay(5000);
 
         let suggestedMessages = await this.page.$$eval(
-            ".ChatMessageSuggestedReplies_suggestedRepliesContainer__JgW12",
+            ".ChatMessageSuggestedReplies_suggestedRepliesContainer__v6sxJ",
             (allMessages) => {
                 return allMessages.map(
                     (message) => message.childNodes[0].textContent
@@ -330,7 +330,7 @@ class PoeClient {
     async deleteMessages(count) {
         await this.page.evaluate(() => {
             let allThreeDotsButtons = document.querySelectorAll(
-                ".ChatMessage_messageOverflowButton__8a84V"
+                ".ChatMessage_messageOverflowButton__55JDi"
             );
             allThreeDotsButtons[allThreeDotsButtons.length - 1].click();
         });
@@ -345,7 +345,7 @@ class PoeClient {
 
         await this.page.evaluate((c) => {
             let allMessageContainers = document.querySelectorAll(
-                ".ChatMessage_messageRow__7yIr2"
+                ".ChatMessage_messageRow__WMtnL"
             );
             for (
                 let i = allMessageContainers.length - 2;
