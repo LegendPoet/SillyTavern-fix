@@ -393,6 +393,17 @@ class PoeClient {
                 document
                     .querySelectorAll(".PageWithSidebarNavItem_label__WUzi5")[3]
                     .click();
+            } else if (
+                // Poe did some fuckery and broke the regular if/else statements, quick 'n dirty fix until Poe gets their shit together
+                document.querySelectorAll(
+                    ".SidebarSection_section__nmtML"
+                )[1].childNodes[0].childNodes[0].childNodes[1].innerText === "Your bots"
+            ) {
+                document
+                    .querySelectorAll(".SidebarSection_section__nmtML")[1]
+                    .childNodes[0]
+                    .childNodes[0]
+                    .click();
             } else {
                 document
                     .querySelectorAll(".PageWithSidebarNavItem_label__WUzi5")[2]
