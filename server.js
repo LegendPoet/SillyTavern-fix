@@ -62,7 +62,6 @@ const express = require('express');
 const compression = require('compression');
 const app = express();
 const responseTime = require('response-time');
-const simpleGit = require('simple-git');
 
 app.use(compression());
 app.use(responseTime());
