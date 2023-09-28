@@ -92,7 +92,7 @@ class NovelTtsProvider {
 
         this.populateCustomVoices()
         await this.checkReady()
-        console.info("Settings loaded")
+        console.debug("NovelTTS: Settings loaded")
     }
 
     // Perform a simple readiness check by trying to fetch voiceIds
@@ -170,7 +170,7 @@ class NovelTtsProvider {
 
     async fetchTtsGeneration(inputText, voiceId) {
         console.info(`Generating new TTS for voice_id ${voiceId}`)
-        const response = await fetch(`/novel_tts`,
+        const response = await fetch(`/api/novelai/generate-voice`,
             {
                 method: 'POST',
                 headers: getRequestHeaders(),

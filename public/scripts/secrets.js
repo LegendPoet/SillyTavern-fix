@@ -77,7 +77,7 @@ export let secret_state = {};
 
 export async function writeSecret(key, value) {
     try {
-        const response = await fetch('/writesecret', {
+        const response = await fetch('/api/secrets/write', {
             method: 'POST',
             headers: getRequestHeaders(),
             body: JSON.stringify({ key, value }),
@@ -98,7 +98,7 @@ export async function writeSecret(key, value) {
 
 export async function readSecretState() {
     try {
-        const response = await fetch('/readsecretstate', {
+        const response = await fetch('/api/secrets/read', {
             method: 'POST',
             headers: getRequestHeaders(),
         });

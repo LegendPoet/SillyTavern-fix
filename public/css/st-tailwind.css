@@ -262,6 +262,10 @@
     flex-flow: column;
 }
 
+.flexFlowRow {
+    flex-flow: row;
+}
+
 .wideMinContent {
     width: min-content;
 }
@@ -404,6 +408,7 @@
 
 .widthFitContent {
     width: fit-content;
+    min-width: fit-content;
 }
 
 .flexGap5 {
