@@ -154,7 +154,7 @@ class PoeClient {
         }
 
         if (
-            (await this.page.$(".LoggedOutBotInfoPage_appButton__UO6NU")) !==
+            (await this.page.$(".LoggedOutBotInfoPage_appButton__DZ5ol")) !==
             null
         ) {
             console.log(
@@ -326,7 +326,7 @@ class PoeClient {
         // a bit of throttling fixes it
         if (!streaming) await delay(150);
 
-        if ((await this.page.$(".Message_noSignIcon__3f_KY")) !== null) {
+        if ((await this.page.$(".Message_noSignIcon__11Dy5")) !== null) {
             throw new Error("ERROR: Token window exceeded!!!!!!!!!");
         }
 
@@ -374,7 +374,7 @@ class PoeClient {
             // The conversation, creating issues in purge logic. This code moves the focus to an element
             // above the last if such an error is detected.
             if (
-                document.querySelectorAll(".Message_errorBubble__XFYk8")
+                document.querySelectorAll(".Message_errorBubble__Bl92G")
                     .length === 0
             ) {
                 let allThreeDotsButtons = document.querySelectorAll(
