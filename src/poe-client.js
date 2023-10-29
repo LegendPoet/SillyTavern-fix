@@ -514,6 +514,24 @@ class PoeClient {
 
         return true;
     }
+
+    // Temporary fix for stuck after bot change
+    async checkNumberOfMessages() {
+        let allMessageContainersLenght = await this.page.evaluate((c) => {
+            let allMessageContainers = document.querySelectorAll(
+                ".ChatMessage_messageRow__DHlnq"
+            );
+            for (
+                let i = allMessageContainers.length - 2;
+                i > allMessageContainers.length - 1 - c;
+                i--
+            ) {
+                allMessageContainers[i].click();
+            }
+            return allMessageContainers.length;
+        });
+        return allMessageContainersLenght;
+    }
 }
 
 module.exports = PoeClient;
