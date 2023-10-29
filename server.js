@@ -2816,8 +2816,14 @@ app.post("/purge_poe", jsonParser, async (request, response) => {
             await client.changeBot(botNames[parseInt(bot)]);
         }
 
+        // Temporary fix for stuck after bot change
         if (count > 0) {
-            await client.deleteMessages(count);
+            let checkNumberOfMessages = await client.checkNumberOfMessages();
+            if (checkNumberOfMessages > 2) {
+                await client.deleteMessages(count);
+            } else {
+                await client.clearContext();
+            }
         } else {
             await client.clearContext();
         }
