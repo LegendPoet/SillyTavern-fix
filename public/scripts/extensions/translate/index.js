@@ -1,3 +1,5 @@
+export {translate};
+
 import {
     callPopup,
     eventSource,
@@ -11,7 +13,7 @@ import {
 import { extension_settings, getContext } from "../../extensions.js";
 import { secret_state, writeSecret } from "../../secrets.js";
 
-const autoModeOptions = {
+export const autoModeOptions = {
     NONE: 'none',
     RESPONSES: 'responses',
     INPUT: 'inputs',
@@ -293,6 +295,27 @@ async function translateProviderDeepLX(text, lang) {
 }
 
 /**
+ * Translates text using the Bing API
+ * @param {string} text Text to translate
+ * @param {string} lang Target language code
+ * @returns {Promise<string>} Translated text
+ */
+async function translateProviderBing(text, lang) {
+    const response = await fetch('/api/translate/bing', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({ text: text, lang: lang }),
+    });
+
+    if (response.ok) {
+        const result = await response.text();
+        return result;
+    }
+
+    throw new Error(response.statusText);
+}
+
+/**
  * Translates text using the selected translation provider
  * @param {string} text Text to translate
  * @param {string} lang Target language code
@@ -315,6 +338,8 @@ async function translate(text, lang) {
                 return await translateProviderDeepLX(text, lang);
             case 'oneringtranslator':
                 return await translateProviderOneRing(text, lang);
+            case 'bing':
+                return await translateProviderBing(text, lang);
             default:
                 console.error('Unknown translation provider', extension_settings.translate.provider);
                 return text;
@@ -461,6 +486,7 @@ jQuery(() => {
                         <option value="google">Google</option>
                         <option value="deepl">DeepL</option>
                         <option value="deeplx">DeepLX</option>
+                        <option value="bing">Bing</option>
                         <option value="oneringtranslator">OneRingTranslator</option>
                     <select>
                     <div id="translate_key_button" class="menu_button fa-solid fa-key margin0"></div>

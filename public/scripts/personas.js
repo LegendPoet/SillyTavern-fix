@@ -1,7 +1,3 @@
-/**
- * This is a placeholder file for all the Persona Management code. Will be refactored into a separate file soon.
- */
-
 import { callPopup, characters, chat_metadata, default_avatar, eventSource, event_types, getRequestHeaders, getThumbnailUrl, getUserAvatars, name1, saveMetadata, saveSettingsDebounced, setUserName, this_chid, user_avatar } from "../script.js";
 import { persona_description_positions, power_user } from "./power-user.js";
 import { getTokenCount } from "./tokenizers.js";
@@ -38,20 +34,70 @@ async function uploadUserAvatar(url, name) {
     });
 }
 
-async function createDummyPersona() {
-    await uploadUserAvatar(default_avatar);
+/**
+ * Prompts the user to create a persona for the uploaded avatar.
+ * @param {string} avatarId User avatar id
+ * @returns {Promise} Promise that resolves when the persona is set
+ */
+export async function createPersona(avatarId) {
+    const personaName = await callPopup('<h3>Enter a name for this persona:</h3>Cancel if you\'re just uploading an avatar.', 'input', '');
+
+    if (!personaName) {
+        console.debug('User cancelled creating a persona');
+        return;
+    }
+
+    await delay(500);
+    const personaDescription = await callPopup('<h3>Enter a description for this persona:</h3>You can always add or change it later.', 'input', '', { rows: 4 });
+
+    initPersona(avatarId, personaName, personaDescription);
+    if (power_user.persona_show_notifications) {
+        toastr.success(`You can now pick ${personaName} as a persona in the Persona Management menu.`, 'Persona Created');
+    }
 }
 
-async function convertCharacterToPersona() {
-    const avatarUrl = characters[this_chid]?.avatar;
+async function createDummyPersona() {
+    const personaName = await callPopup('<h3>Enter a name for this persona:</h3>', 'input', '');
 
+    if (!personaName) {
+        console.debug('User cancelled creating dummy persona');
+        return;
+    }
+
+    // Date + name (only ASCII) to make it unique
+    const avatarId = `${Date.now()}-${personaName.replace(/[^a-zA-Z0-9]/g, '')}.png`;
+    initPersona(avatarId, personaName, '');
+    await uploadUserAvatar(default_avatar, avatarId);
+}
+
+/**
+ * Initializes a persona for the given avatar id.
+ * @param {string} avatarId User avatar id
+ * @param {string} personaName Name for the persona
+ * @param {string} personaDescription Optional description for the persona
+ * @returns {void}
+ */
+export function initPersona(avatarId, personaName, personaDescription) {
+    power_user.personas[avatarId] = personaName;
+    power_user.persona_descriptions[avatarId] = {
+        description: personaDescription || '',
+        position: persona_description_positions.IN_PROMPT,
+    };
+
+    saveSettingsDebounced();
+}
+
+export async function convertCharacterToPersona(characterId = null) {
+    if (null === characterId) characterId = this_chid;
+
+    const avatarUrl = characters[characterId]?.avatar;
     if (!avatarUrl) {
         console.log("No avatar found for this character");
         return;
     }
 
-    const name = characters[this_chid]?.name;
-    let description = characters[this_chid]?.description;
+    const name = characters[characterId]?.name;
+    let description = characters[characterId]?.description;
     const overwriteName = `${name} (Persona).png`;
 
     if (overwriteName in power_user.personas) {
@@ -181,7 +227,7 @@ async function bindUserNameToPersona() {
 
 export function selectCurrentPersona() {
     const personaName = power_user.personas[user_avatar];
-    if (personaName && name1 !== personaName) {
+    if (personaName) {
         const lockedPersona = chat_metadata['persona'];
         if (lockedPersona && lockedPersona !== user_avatar && power_user.persona_show_notifications) {
             toastr.info(
@@ -191,7 +237,10 @@ export function selectCurrentPersona() {
             );
         }
 
-        setUserName(personaName);
+        if (personaName !== name1) {
+            console.log(`Auto-updating user name to ${personaName}`);
+            setUserName(personaName);
+        }
 
         const descriptor = power_user.persona_descriptions[user_avatar];
 

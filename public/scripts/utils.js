@@ -12,19 +12,46 @@ export const PAGINATION_TEMPLATE = '<%= rangeStart %>-<%= rangeEnd %> of <%= tot
  * Navigation options for pagination.
  * @enum {number}
  */
-export const navigation_option = { none: 0, previous: 1, last: 2, };
+export const navigation_option = { none: -2000, previous: -1000, };
 
 export function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-export function isUrlOrAPIKey(value) {
+export function isValidUrl(value) {
     try {
         new URL(value);
         return true;
     } catch (_) {
         return false;
     }
+}
+
+/**
+ * Parses ranges like 10-20 or 10.
+ * Range is inclusive. Start must be less than end.
+ * Returns null if invalid.
+ * @param {string} input The input string.
+ * @param {number} min The minimum value.
+ * @param {number} max The maximum value.
+ * @returns {{ start: number, end: number }} The parsed range.
+ */
+export function stringToRange(input, min, max) {
+    let start, end;
+
+    if (input.includes('-')) {
+        const parts = input.split('-');
+        start = parts[0] ? parseInt(parts[0], 10) : NaN;
+        end = parts[1] ? parseInt(parts[1], 10) : NaN;
+    } else {
+        start = end = parseInt(input, 10);
+    }
+
+    if (isNaN(start) || isNaN(end) || start > end || start < min || end > max) {
+        return null;
+    }
+
+    return { start, end };
 }
 
 /**
@@ -498,7 +525,7 @@ export function countOccurrences(string, character) {
     let count = 0;
 
     for (let i = 0; i < string.length; i++) {
-        if (string[i] === character) {
+        if (string.substring(i, i + character.length) === character) {
             count++;
         }
     }
@@ -523,7 +550,7 @@ export function timestampToMoment(timestamp) {
         return moment.invalid();
     }
 
-    // Unix time (legacy TAI)
+    // Unix time (legacy TAI / tags)
     if (typeof timestamp === 'number') {
         return moment(timestamp);
     }
@@ -870,7 +897,7 @@ export async function saveBase64AsFile(base64Data, characterName, filename = "",
     // If the response is successful, get the saved image path from the server's response
     if (response.ok) {
         const responseData = await response.json();
-        return responseData.path;
+        return responseData.path.replace(/\\/g, '/'); // Replace backslashes with forward slashes
     } else {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to upload the image to the server');
@@ -987,13 +1014,4 @@ export function uuidv4() {
         const v = c === 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
     });
-}
-
-/**
- * Clones an object using JSON serialization.
- * @param {any} obj The object to clone.
- * @returns {any} A deep clone of the object.
- */
-export function deepClone(obj) {
-    return JSON.parse(JSON.stringify(obj));
 }

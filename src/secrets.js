@@ -7,10 +7,12 @@ const SECRETS_FILE = path.join(process.cwd(), './secrets.json');
 const SECRET_KEYS = {
     HORDE: 'api_key_horde',
     MANCER: 'api_key_mancer',
+    APHRODITE: 'api_key_aphrodite',
     OPENAI: 'api_key_openai',
-    /* InsertP */
+    // POE AND FLOWGPT INTEGRATION
     POE: "api_key_poe",
     NOVEL: 'api_key_novel',
+    FLOWGPT: "api_key_flowgpt",
     CLAUDE: 'api_key_claude',
     DEEPL: 'deepl',
     LIBRE: 'libre',
@@ -21,6 +23,7 @@ const SECRET_KEYS = {
     SCALE_COOKIE: 'scale_cookie',
     ONERING_URL: 'oneringtranslator_url',
     DEEPLX_URL: 'deeplx_url',
+    PALM: 'api_key_palm',
 }
 
 /**
@@ -91,8 +94,8 @@ function migrateSecrets(settingsFile) {
         const fileContents = fs.readFileSync(settingsFile, 'utf8');
         const settings = JSON.parse(fileContents);
         const oaiKey = settings?.api_key_openai;
-        /* InsertP */
         const poeKey = settings?.poe_settings?.token;
+        const flowgptKey = settings?.flowgpt_settings?.token;
         const hordeKey = settings?.horde_settings?.api_key;
         const novelKey = settings?.api_key_novel;
 
@@ -100,6 +103,20 @@ function migrateSecrets(settingsFile) {
             console.log('Migrating OpenAI key...');
             writeSecret(SECRET_KEYS.OPENAI, oaiKey);
             delete settings.api_key_openai;
+            modified = true;
+        }
+
+        if (typeof poeKey === "string") {
+            console.log("Migrating Poe key...");
+            writeSecret(SECRET_KEYS.POE, poeKey);
+            delete settings.poe_settings.token;
+            modified = true;
+        }
+
+        if (typeof flowgptKey === "string") {
+            console.log("Migrating FlowGPT key...");
+            writeSecret(SECRET_KEYS.FLOWGPT, flowgptKey);
+            delete settings.flowgpt_settings.token;
             modified = true;
         }
 
@@ -114,14 +131,6 @@ function migrateSecrets(settingsFile) {
             console.log('Migrating Novel key...');
             writeSecret(SECRET_KEYS.NOVEL, novelKey);
             delete settings.api_key_novel;
-            modified = true;
-        }
-        
-        /* InsertP */
-        if (typeof poeKey === "string") {
-            console.log("Migrating Poe key...");
-            writeSecret(SECRET_KEYS.POE, poeKey);
-            delete settings.poe_settings.token;
             modified = true;
         }
 

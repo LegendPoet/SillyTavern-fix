@@ -5,7 +5,7 @@ const fetch = require('node-fetch').default;
 const { finished } = require('stream/promises');
 const { DIRECTORIES, UNSAFE_EXTENSIONS } = require('./constants');
 
-const VALID_CATEGORIES = ["bgm", "ambient"];
+const VALID_CATEGORIES = ["bgm", "ambient", "blip", "live2d"];
 
 /**
  * Sanitizes the input filename for theasset.
@@ -37,6 +37,25 @@ function checkAssetFileName(inputFilename) {
     return path.normalize(inputFilename).replace(/^(\.\.(\/|\\|$))+/, '');;
 }
 
+// Recursive function to get files
+function getFiles(dir, files = []) {
+    // Get an array of all files and directories in the passed directory using fs.readdirSync
+    const fileList = fs.readdirSync(dir);
+    // Create the full path of the file/directory by concatenating the passed directory and file/directory name
+    for (const file of fileList) {
+        const name = `${dir}/${file}`;
+        // Check if the current file/directory is a directory using fs.statSync
+        if (fs.statSync(name).isDirectory()) {
+            // If it is a directory, recursively call the getFiles function with the directory path and the files array
+            getFiles(name, files);
+        } else {
+            // If it is a file, push the full path to the files array
+            files.push(name);
+        }
+    }
+    return files;
+}
+
 /**
  * Registers the endpoints for the asset management.
  * @param {import('express').Express} app Express app
@@ -66,6 +85,24 @@ function registerEndpoints(app, jsonParser) {
                 for (const folder of folders) {
                     if (folder == "temp")
                         continue;
+
+                    // Live2d assets
+                    if (folder == "live2d") {
+                        output[folder] = [];
+                        const live2d_folder = path.normalize(path.join(folderPath, folder));
+                        const files = getFiles(live2d_folder);
+                        //console.debug("FILE FOUND:",files)
+                        for (let file of files) {
+                            file = path.normalize(file.replace('public' + path.sep, ''));
+                            if (file.endsWith("model3.json")) {
+                                //console.debug("Asset live2d model found:",file)
+                                output[folder].push(path.normalize(path.join(file)));
+                            }
+                        }
+                        continue;
+                    }
+
+                    // Other assets (bgm/ambient/blip)
                     const files = fs.readdirSync(path.join(folderPath, folder))
                         .filter(filename => {
                             return filename != ".placeholder";
@@ -227,6 +264,24 @@ function registerEndpoints(app, jsonParser) {
         let output = [];
         try {
             if (fs.existsSync(folderPath) && fs.statSync(folderPath).isDirectory()) {
+
+                // Live2d assets
+                if (category == "live2d") {
+                    const folders = fs.readdirSync(folderPath)
+                    for (let modelFolder of folders) {
+                        const live2dModelPath = path.join(folderPath, modelFolder);
+                        if (fs.statSync(live2dModelPath).isDirectory()) {
+                            for (let file of fs.readdirSync(live2dModelPath)) {
+                                //console.debug("Character live2d model found:", file)
+                                if (file.includes("model"))
+                                    output.push(path.join("characters", name, category, modelFolder, file));
+                            }
+                        }
+                    }
+                    return response.send(output);
+                }
+
+                // Other assets
                 const files = fs.readdirSync(folderPath)
                     .filter(filename => {
                         return filename != ".placeholder";
@@ -234,7 +289,6 @@ function registerEndpoints(app, jsonParser) {
 
                 for (let i of files)
                     output.push(`/characters/${name}/${category}/${i}`);
-
             }
             return response.send(output);
         }
