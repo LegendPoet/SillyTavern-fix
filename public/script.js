@@ -123,6 +123,7 @@ import {
     MIN_AMOUNT_GEN,
 } from "./scripts/horde.js";
 
+// POE AND FLOW GPT INTEGRATION
 import {
     poe_settings,
     loadPoeSettings,
@@ -131,6 +132,15 @@ import {
     setPoeOnlineStatus,
     appendPoeAnchors,
 } from "./scripts/poe.js";
+
+import {
+    flowgpt_settings,
+    loadFlowGPTSettings,
+    generateFlowGPT,
+    is_get_status_flowgpt,
+    setFlowGPTOnlineStatus,
+    appendFlowGPTAnchors,
+} from "./scripts/flowgpt.js";
 
 import {
     debounce,
@@ -862,6 +872,7 @@ function checkOnlineStatus() {
         is_get_status_novel = false;
         setOpenAIOnlineStatus(false);
         setPoeOnlineStatus(false);
+        setFlowGPTOnlineStatus(false);
     } else {
         $("#online_status_indicator2").css("background-color", "green"); //kobold
         $("#online_status_text2").html(online_status);
@@ -955,7 +966,7 @@ async function getStatus() {
             },
         });
     } else {
-        if (is_get_status_novel != true && is_get_status_openai != true && main_api != "poe") {
+        if (is_get_status_novel != true && is_get_status_openai != true && main_api != "poe" && main_api !== "flowgpt") {
             online_status = "no_connection";
         }
     }
@@ -1989,6 +2000,7 @@ function isStreamingEnabled() {
         || (main_api == 'novel' && nai_settings.streaming_novel)
         || (main_api == 'textgenerationwebui' && textgenerationwebui_settings.streaming))
         || (main_api == 'poe' && poe_settings.streaming)
+        // FlowGPT streaming is not currently implemented, so no checks for it
         && !isMultigenEnabled(); // Multigen has a quasi-streaming mode which breaks the real streaming
 }
 
@@ -2478,6 +2490,20 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
             zeroDepthAnchor = appendPoeAnchors(type, zeroDepthAnchor, jailbreakPrompt);
         }
 
+        // Added here because no clue where else to put it lmao
+        if (main_api === "flowgpt") {
+            allAnchors = appendFlowGPTAnchors(
+                type,
+                allAnchors,
+                jailbreakPrompt
+            );
+            zeroDepthAnchor = appendFlowGPTAnchors(
+                type,
+                zeroDepthAnchor,
+                jailbreakPrompt
+            );
+        }
+
         // hack for regeneration of the first message
         if (chat2.length == 0) {
             chat2.push('');
@@ -2553,10 +2579,14 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
         streamingProcessor = isStreamingEnabled() ? new StreamingProcessor(type, force_name2) : false;
 
         if (isContinue) {
-            // Coping mechanism for OAI spacing
-            if ((main_api === 'openai' || main_api === 'poe') && !cyclePrompt.endsWith(' ')) {
-                cyclePrompt += ' ';
-                continue_mag += ' ';
+            // Decided to add FlowGPT here as well, since it has OAI models
+            if (
+                (main_api === "openai" ||
+                    main_api === "poe" ||
+                    main_api === "flowgpt") &&
+                !cyclePrompt.endsWith(" ")
+            ) {
+                cyclePrompt += " ";
             }
 
             // Save reply does add cycle text to the prompt, so it's not needed here
@@ -2818,6 +2848,8 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                 setInContextMessages(openai_messages_count, type);
             } else if (main_api == 'poe') {
                 generate_data = { prompt: finalPromt };
+            } else if (main_api === "flowgpt") {
+                generate_data = { prompt: finalPromt };
             }
 
             if (power_user.console_log_prompts) {
@@ -2883,8 +2915,11 @@ async function Generate(type, { automatic_trigger, force_name2, resolve, reject,
                 else {
                     generatePoe(type, finalPromt, abortController.signal).then(onSuccess).catch(onError);
                 }
-            }
-            else if (main_api == 'textgenerationwebui' && isStreamingEnabled() && type !== 'quiet') {
+            } else if (main_api == "flowgpt") {
+                generateFlowGPT(type, finalPromt, abortController.signal)
+                    .then(onSuccess)
+                    .catch(onError);
+            } else if (main_api == 'textgenerationwebui' && isStreamingEnabled() && type !== 'quiet') {
                 streamingProcessor.generator = await generateTextGenWithStreaming(generate_data, streamingProcessor.abortController.signal);
             }
             else if (main_api == 'novel' && isStreamingEnabled() && type !== 'quiet') {
@@ -3214,6 +3249,11 @@ function getMaxContextSize() {
         this_max_context = oai_settings.openai_max_context;
     }
     if (main_api == 'poe') {
+        this_max_context = Number(max_context);
+    }
+    // Same here, no specific settings for max content, as FlowGPT doesn't
+    // provide a way to control it
+    if (main_api === "flowgpt") {
         this_max_context = Number(max_context);
     }
     return this_max_context;
@@ -3725,7 +3765,10 @@ function shouldContinueMultigen(getMessage, isImpersonate, isInstruct) {
     // stopping name string
     const nameString = isImpersonate ? `${name2}:` : (is_pygmalion ? 'You:' : `${name1}:`);
     // if there is no 'You:' in the response msg
-    const doesNotContainName = message_already_generated.indexOf(nameString) === -1;
+    const doesNotContainName = message_already_generated.indexOf(nameString) === -1 ||
+    main_api === "poe" ||
+    main_api === "flowgpt"; // Added  due to issues with Poe streaming & some bots on FlowGPT not including big chunks of the message
+    //if the bot includes user text in its replies
     //if there is no <endoftext> stamp in the response msg
     const isNotEndOfText = message_already_generated.indexOf('<|endoftext|>') === -1;
     //if the gen'd msg is less than the max response length..
@@ -3744,7 +3787,14 @@ function extractNameFromMessage(getMessage, force_name2, isImpersonate) {
     } else {
         this_mes_is_name = false;
     }
-    if (force_name2 || main_api == 'poe' || power_user.instruct.enabled)
+    // And, same seems to apply to FlowGPT so far. Might change it if it behaves
+    // differently in the future
+    if (
+        force_name2 ||
+        main_api == "poe" ||
+        main_api === "flowgpt" ||
+        power_user.instruct.enabled
+    )
         this_mes_is_name = true;
 
     if (isImpersonate) {
@@ -3786,6 +3836,8 @@ function extractMessageFromData(data) {
         case 'openai':
             return data;
         case 'poe':
+            return data;
+        case "flowgpt":
             return data;
         default:
             return ''
@@ -4483,7 +4535,15 @@ function changeMainAPI() {
             apiRanges: $("#range_block_poe"),
             maxContextElem: $("#max_context_block"),
             amountGenElem: $("#amount_gen_block"),
-        }
+        },
+        flowgpt: {
+            apiSettings: $("#flowgpt_settings"),
+            apiConnector: $("#flowgpt_api"),
+            apiPresets: $("#flowgpt_api-presets"),
+            apiRanges: $("#range_block_flowgpt"),
+            maxContextElem: $("#max_context_block"),
+            amountGenElem: $("#amount_gen_block"),
+        },
     };
     //console.log('--- apiElements--- ');
     //console.log(apiElements);
@@ -4529,7 +4589,8 @@ function changeMainAPI() {
         $("#common-gen-settings-block").css("display", "block");
     }
     // Hide amount gen for poe
-    if (selectedVal == "poe") {
+    // Same for flowgpt, since it doesn't provide a way to control it
+    if (selectedVal === "poe" || selectedVal === "flowgpt") {
         $("#amount_gen_block").css("display", "none");
     } else {
         $("#amount_gen_block").css("display", "flex");
@@ -4545,6 +4606,11 @@ function changeMainAPI() {
     // Poe auto connect
     if (main_api == 'poe' && $('#auto-connect-checkbox').is(":checked")) {
         $('#poe_connect').trigger('click');
+    }
+
+    // FlowGPT auto connect
+    if (main_api == 'poe' && $('#auto-connect-checkbox').is(":checked")) {
+        $('#flowgpt_connect').trigger('click');
     }
 
     if (main_api == "koboldhorde") {
@@ -5151,6 +5217,9 @@ async function getSettings(type) {
         // Poe
         loadPoeSettings(settings);
 
+        // FlowGPT
+        loadFlowGPTSettings(settings);
+
         // Load power user settings
         loadPowerUserSettings(settings, data);
 
@@ -5174,6 +5243,10 @@ async function getSettings(type) {
 
         if (settings.main_api == 'poe') {
             settings.main_api = 'poe';
+        }
+
+        if (settings.main_api == 'flowgpt') {
+            settings.main_api = 'flowgpt';
         }
 
         main_api = settings.main_api;
@@ -5267,6 +5340,7 @@ async function saveSettings(type) {
             horde_settings: horde_settings,
             power_user: power_user,
             poe_settings: poe_settings,
+            flowgpt_settings: flowgpt_settings,
             extension_settings: extension_settings,
             context_settings: context_settings,
             tags: tags,
@@ -5542,7 +5616,12 @@ async function getStatusNovel() {
             },
         });
     } else {
-        if (is_get_status != true && is_get_status_openai != true && is_get_status_poe != true) {
+        if (
+            is_get_status != true &&
+            is_get_status_openai != true &&
+            is_get_status_poe != true &&
+            is_get_status_flowgpt != true
+        ) {
             online_status = "no_connection";
         }
     }
@@ -6960,6 +7039,9 @@ function connectAPISlash(_, text) {
         'poe': {
             button: '#poe_connect',
         },
+        'flowgpt': {
+            button: "#flowgpt_connect",
+        },
     };
 
     const apiConfig = apiMap[text];
@@ -7186,7 +7268,7 @@ $(document).ready(function () {
     }
 
     registerSlashCommand('dupe', DupeChar, [], "– duplicates the currently selected character", true, true);
-    registerSlashCommand('api', connectAPISlash, [], "(kobold, horde, novel, ooba, oai, claude, poe, windowai) – connect to an API", true, true);
+    registerSlashCommand('api', connectAPISlash, [], "(kobold, horde, novel, ooba, oai, claude, poe, windowai, flowgpt) – connect to an API", true, true);
     registerSlashCommand('impersonate', doImpersonate, ['imp'], "- calls an impersonation response", true, true);
     registerSlashCommand('delchat', doDeleteChat, [], "- deletes the current chat", true, true);
     registerSlashCommand('closechat', doCloseChat, [], "- closes the current chat", true, true);
@@ -8110,6 +8192,8 @@ $(document).ready(function () {
         is_get_status = false;
         is_get_status_novel = false;
         setOpenAIOnlineStatus(false);
+        setPoeOnlineStatus(false);
+        setFlowGPTOnlineStatus(false);
         online_status = "no_connection";
         checkOnlineStatus();
         changeMainAPI();

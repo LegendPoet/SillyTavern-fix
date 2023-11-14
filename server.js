@@ -144,6 +144,7 @@ client.on('error', (err) => {
 // POE CLIENT INTEGRATION HERE
 
 const PoeClient = require("./src/poe-client");
+const FlowGPTClient = require("./src/flowgpt-client");
 
 let api_server = "http://0.0.0.0:5000";
 let api_novelai = "https://api.novelai.net";
@@ -2733,44 +2734,111 @@ app.post('/deletegroup', jsonParser, async (request, response) => {
     return response.send({ ok: true });
 });
 
-// POE ADDED 1
+// POE AND FLOW ADDED 
+
+// POE ADD
 
 const POE_DEFAULT_BOT = "gptforst";
 
-const poeClientCache = {};
+// An already instantiated client. No need to keep a separate object for this
+let cachedPoeClient = null;
 
 let botNames = [];
 
-async function getPoeClient(token, useCache = false) {
-    let client;
+let expiredPoeTokens = [];
 
-    if (useCache && poeClientCache[token]) {
-        client = poeClientCache[token];
-    } else {
-        if (poeClientCache[token]) {
-            await poeClientCache[token]?.closeDriver();
+const FLOWGPT_DEFAULT_BOT = "ChatGPT";
+
+let cachedFlowGPTClient = null;
+
+let flowGPTBotNames = [];
+
+// Instantiates and returns a Poe client with provided p_b cookie.
+// Should only receive the cookie itself, without the whole token.
+async function instantiateClient(cookie) {
+    let client;
+    // Attempt to instantialize the client 3 times,
+    // to automate the handling of Poe sometimes
+    // marking the user as logged out.
+    // Most likely going to be a temporary fix,
+    // as properly closing down the sessions, or using
+    // an incognito context should be better anyway
+
+    let successfullyInitialized = false;
+    for (let triesLeft = 3; triesLeft > 0; triesLeft--) {
+        client = new PoeClient(cookie, POE_DEFAULT_BOT);
+        successfullyInitialized = await client.initializeDriver();
+        if (!successfullyInitialized) {
+            await client?.closeDriver();
+            continue;
         }
-        let successfulltInitialized = false;
-        for (let triesLeft = 5; triesLeft > 0; triesLeft--) {
-            client = new PoeClient(token, POE_DEFAULT_BOT);
-            successfulltInitialized = await client.initializeDriver();
-            if (!successfulltInitialized) {
-                await client.closeDriver();
-                continue;
-            }
-            break;
-        }
-        if (!successfulltInitialized) {
-            console.log(
-                "ERROR: failed to connect after 5 tries! Please double-check that your cookie is correct, or try another cookie!"
-            );
-            throw new Error(
-                "Poe failed to initialize. Please check the terminal for additional info!"
-            );
-        }
+        break;
     }
 
-    poeClientCache[token] = client;
+    if (!successfullyInitialized) {
+        console.log(
+            "ERROR: failed to connect after 5 tries! Please double-check that your cookie is correct, or try another cookie!"
+        );
+        return null;
+    }
+
+    let hasMessagesLeft = await client.checkRemainingMessages();
+    if (!hasMessagesLeft) {
+        console.log(
+            "ERROR: No more messages left on this account! Try another cookie (automatically checked if you have entered several)"
+        );
+        expiredPoeTokens.push(cookie);
+        return null;
+    }
+
+    return client;
+}
+
+// Fetches a client depending on the provided token, splitting it into parts.
+// The code is a bit clunky, will rework once I have more time though.
+async function getPoeClient(token, useCache = false) {
+    // Since both use a headless browser, close the other one before using this
+    if (cachedFlowGPTClient !== null) {
+        await cachedFlowGPTClient.closeDriver();
+        cachedFlowGPTClient = null;
+    }
+    if (useCache && cachedPoeClient !== null) {
+        // Check whether the cached client has any messages left
+        // Otherwise, add its p_b to expired cookies and start the general workflow
+        // No need to close the client, as it will get closed on its own anyway
+        // right after the if block
+        if (await cachedPoeClient.checkRemainingMessages())
+            return cachedPoeClient;
+        expiredPoeTokens.push(cachedPoeClient.poeCookie);
+    }
+
+    if (cachedPoeClient !== null) {
+        await cachedPoeClient?.closeDriver();
+        cachedPoeClient = null;
+    }
+
+    let client = null;
+
+    // Parse cookies from the provided token, and try to get
+    // a client that hasn't hit the message limit yet.
+    // Throw error otherwise
+    let allCookies = token.split(/[, ]+/g);
+
+    for (let cookie of allCookies) {
+        if (expiredPoeTokens.includes(cookie)) continue;
+
+        client = await instantiateClient(cookie);
+        if (client !== null) break;
+    }
+
+    // By this point, if client is still null, then no messages are left, hence throwing an error
+    if (client === null) {
+        console.error(
+            "A client wasn't initiated with any of the provided tokens! Perhaps too many messages?"
+        );
+    }
+
+    cachedPoeClient = client;
     return client;
 }
 
@@ -2782,9 +2850,8 @@ app.post("/status_poe", jsonParser, async (request, response) => {
     }
 
     try {
-        const client = await getPoeClient(token, false);
+        const client = await getPoeClient(token, true);
         botNames = await client.getBotNames();
-        //client.disconnect_ws();
 
         return response.send({ bot_names: botNames });
     } catch (err) {
@@ -2816,20 +2883,70 @@ app.post("/purge_poe", jsonParser, async (request, response) => {
             await client.changeBot(botNames[parseInt(bot)]);
         }
 
-        // Temporary fix for stuck after bot change
         if (count > 0) {
-            let checkNumberOfMessages = await client.checkNumberOfMessages();
-            if (checkNumberOfMessages > 2) {
-                await client.deleteMessages(count);
-            } else {
-                await client.clearContext();
-            }
+            await client.deleteMessages(count);
+        } else if (count === -1) {
+            await client.newChat();
         } else {
             await client.clearContext();
         }
         //client.disconnect_ws();
 
         return response.send({ ok: true });
+    } catch (err) {
+        console.error(err);
+        return response.sendStatus(500);
+    }
+});
+
+app.post("/add_poe_bot", jsonParser, async (request, response) => {
+    const token = readSecret(SECRET_KEYS.POE);
+
+    if (!token) {
+        return response.sendStatus(401);
+    }
+
+    const botToAdd = request.body.botToAdd;
+
+    console.log(`Trying to add bot ${botToAdd}`);
+
+    try {
+        const client = await getPoeClient(token, true);
+
+        let addBotOutput = await client.addBot(botToAdd);
+
+        if (addBotOutput.error) {
+            console.log(
+                "Couldn't add bot - check the console for more details"
+            );
+            return response.send({ ok: false });
+        }
+
+        let newBotNames = addBotOutput.newBotNames;
+        botNames = newBotNames;
+
+        return response.send({ ok: true, botNames: newBotNames });
+    } catch (err) {
+        console.error(err);
+        return response.sendStatus(500);
+    }
+});
+
+app.post("/poe_messages_left", jsonParser, async (request, response) => {
+    const token = readSecret(SECRET_KEYS.POE);
+
+    if (!token) {
+        return response.sendStatus(401);
+    }
+
+    try {
+        const client = await getPoeClient(token, true);
+
+        let hasMessagesLeft = await client.checkRemainingMessages();
+
+        console.log(`HasMessagesLeft: ${hasMessagesLeft}`);
+
+        return response.send({ hasMessagesLeft });
     } catch (err) {
         console.error(err);
         return response.sendStatus(500);
@@ -2864,6 +2981,9 @@ app.post("/generate_poe", jsonParser, async (request, response) => {
 
     const streaming = request.body.streaming ?? false;
 
+    const sendAsFile = request.body.send_as_file;
+    const fileInstruction = request.body.file_instruction;
+
     let client;
 
     try {
@@ -2882,7 +3002,12 @@ app.post("/generate_poe", jsonParser, async (request, response) => {
             ) {
                 await client.changeBot(botNames[parseInt(bot)]);
             }
-            await client.sendMessage(prompt);
+
+            if (sendAsFile) {
+                await client.sendFileMessage(prompt, fileInstruction);
+            } else {
+                await client.sendMessage(prompt);
+            }
 
             // necessary due to double jb issues
             await delay(80);
@@ -2897,7 +3022,7 @@ app.post("/generate_poe", jsonParser, async (request, response) => {
                         //"X-Message-Id": String(mes.messageId),
                     });
                 }
-                await delay(50);
+                await delay(150);
 
                 if (isGenerationStopped) {
                     console.error(
@@ -2944,7 +3069,12 @@ app.post("/generate_poe", jsonParser, async (request, response) => {
             ) {
                 await client.changeBot(botNames[parseInt(bot)]);
             }
-            await client.sendMessage(prompt);
+
+            if (sendAsFile) {
+                await client.sendFileMessage(prompt, fileInstruction);
+            } else {
+                await client.sendMessage(prompt);
+            }
 
             // necessary due to double jb issues
             await delay(500);
@@ -2957,8 +3087,8 @@ app.post("/generate_poe", jsonParser, async (request, response) => {
             while (waitingForMessage) {
                 await delay(400);
                 let stillGenerating = await client.isGenerating();
-                console.log(`Still generating is: ${stillGenerating}`);
-                console.log(`Waiting for message is: ${waitingForMessage}`);
+                // console.log(`Still generating is: ${stillGenerating}`);
+                // console.log(`Waiting for message is: ${waitingForMessage}`);
                 if (!stillGenerating) {
                     waitingForMessage = false;
                 }
@@ -3084,6 +3214,161 @@ app.post("/poe_suggest", jsonParser, async function (request, response) {
 });
 
 // POE ADDED
+
+// FLOWGPT ADDED
+
+async function getFlowGPTClient(token, useCache = false) {
+    // Since both use a headless browser, close the other one before using this
+    if (cachedPoeClient !== null) {
+        await cachedPoeClient.closeDriver();
+        cachedPoeClient = null;
+    }
+    if (useCache && cachedFlowGPTClient !== null) {
+        return cachedFlowGPTClient;
+    }
+
+    if (cachedFlowGPTClient !== null) {
+        await cachedFlowGPTClient?.closeDriver();
+        cachedFlowGPTClient = null;
+    }
+
+    let client = null;
+
+    client = new FlowGPTClient(token, FLOWGPT_DEFAULT_BOT);
+    successfullyInitialized = await client.initializeDriver();
+    if (!successfullyInitialized) {
+        await client?.closeDriver();
+        client = null;
+    }
+
+    // By this point, if client is still null, then no messages are left, hence throwing an error
+    if (client === null) {
+        console.error("Error during initializing FlowGPT :(");
+    }
+
+    cachedFlowGPTClient = client;
+    return client;
+}
+
+app.post("/status_flowgpt", jsonParser, async (request, response) => {
+    const token = readSecret(SECRET_KEYS.FLOWGPT);
+
+    if (!token) {
+        return response.sendStatus(401);
+    }
+
+    try {
+        const client = await getFlowGPTClient(token, true);
+        flowGPTBotNames = await client.getBotNames();
+        console.log(flowGPTBotNames);
+
+        return response.send({ bot_names: flowGPTBotNames });
+    } catch (err) {
+        console.error(err);
+
+        return response.sendStatus(401);
+    }
+});
+
+app.post("/purge_flowgpt", jsonParser, async (request, response) => {
+    const token = readSecret(SECRET_KEYS.FLOWGPT);
+
+    if (!token) {
+        return response.sendStatus(401);
+    }
+
+    const bot = request.body.bot ?? FLOWGPT_DEFAULT_BOT;
+
+    console.log(`!Purging FlowGPT chat!`);
+
+    try {
+        const client = await getFlowGPTClient(token, true);
+
+        if (
+            flowGPTBotNames[parseInt(bot)] !== client.botName &&
+            flowGPTBotNames[parseInt(bot)] !== undefined
+        ) {
+            await client.changeBot(flowGPTBotNames[parseInt(bot)]);
+        }
+
+        await client.newChat();
+
+        return response.send({ ok: true });
+    } catch (err) {
+        console.error(err);
+        return response.sendStatus(500);
+    }
+});
+
+app.post("/generate_flowgpt", jsonParser, async (request, response) => {
+    if (!request.body.prompt) {
+        return response.sendStatus(400);
+    }
+
+    const token = readSecret(SECRET_KEYS.FLOWGPT);
+
+    if (!token) {
+        return response.sendStatus(401);
+    }
+
+    const abortController = new AbortController();
+
+    request.socket.removeAllListeners("close");
+    request.socket.on("close", function () {
+        isGenerationStopped = true;
+
+        if (client) {
+            abortController.abort();
+        }
+    });
+
+    const prompt = request.body.prompt;
+    const bot = request.body.bot ?? FLOWGPT_DEFAULT_BOT;
+
+    const editLastMessage = request.body.editLastMessage;
+
+    let client;
+
+    try {
+        client = await getFlowGPTClient(token, true);
+    } catch (error) {
+        console.error(error);
+        return response.sendStatus(500);
+    }
+
+    try {
+        let reply;
+
+        if (bot !== client.botName && flowGPTBotNames.includes(bot)) {
+            await client.changeBot(bot);
+        }
+
+        if (editLastMessage) {
+            await client.editLastSentMessage(prompt);
+        } else {
+            await client.sendMessage(prompt);
+        }
+
+        // necessary due to double jb issues
+        await delay(500);
+
+        console.log("Getting latest message...");
+
+        reply = await client.getLatestMessage();
+
+        console.log(reply);
+
+        await delay(200);
+
+        // Temporary fix due to issues during parsing json on client side
+        return response.send(reply);
+    } catch {
+        //client.disconnect_ws();
+        return response.sendStatus(500);
+    }
+});
+
+// FLOWGPT ADDED
 
 /**
  * Discover the extension folders
@@ -4088,6 +4373,7 @@ const SECRET_KEYS = {
     OPENAI: 'api_key_openai',
     POE: "api_key_poe",
     NOVEL: 'api_key_novel',
+    FLOWGPT: "api_key_flowgpt",
     CLAUDE: 'api_key_claude',
     DEEPL: 'deepl',
     OPENROUTER: 'api_key_openrouter',
@@ -4107,6 +4393,7 @@ function migrateSecrets() {
         const oaiKey = settings?.api_key_openai;
         const hordeKey = settings?.horde_settings?.api_key;
         const poeKey = settings?.poe_settings?.token;
+        const flowgptKey = settings?.flowgpt_settings?.token;
         const novelKey = settings?.api_key_novel;
 
         if (typeof oaiKey === 'string') {
@@ -4127,6 +4414,13 @@ function migrateSecrets() {
             console.log("Migrating Poe key...");
             writeSecret(SECRET_KEYS.POE, poeKey);
             delete settings.poe_settings.token;
+            modified = true;
+        }
+
+        if (typeof flowgptKey === "string") {
+            console.log("Migrating FlowGPT key...");
+            writeSecret(SECRET_KEYS.FLOWGPT, flowgptKey);
+            delete settings.flowgpt_settings.token;
             modified = true;
         }
 
